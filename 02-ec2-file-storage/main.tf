@@ -1,5 +1,5 @@
 provider "aws" {
-  region = "ap-southeast-2"
+  region = var.aws_region
 }
 # =============================================================
 #  NETWORKING — the "land" everything sits on
@@ -7,29 +7,29 @@ provider "aws" {
 
 # 1. The VPC itself — our private slice of the AWS network
 resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = { Name = "firstapp-vpc-tf" }
+  tags = { Name = "${var.project_name}-vpc-tf" }
 }
 
 # 2. A public subnet inside the VPC
 #    map_public_ip_on_launch = true  ← the fix for the issue you hit!
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = "ap-southeast-2a"
+  cidr_block              = var.subnet_cidr
+  availability_zone       = var.availability_zone
   map_public_ip_on_launch = true   # instances here auto-get a public IP 🎯
 
-  tags = { Name = "firstapp-public-subnet-tf" }
+  tags = { Name = "${var.project_name}-public-subnet-tf" }
 }
 
 # 3. The internet gateway — the "door" to the internet
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
-  tags = { Name = "firstapp-igw-tf" }
+  tags = { Name = "${var.project_name}-igw-tf" }
 }
 
 # 4. A route table that sends internet traffic to the IGW
@@ -41,7 +41,7 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.igw.id    # ...goes to the IGW
   }
 
-  tags = { Name = "firstapp-public-rt-tf" }
+  tags = { Name = "${var.project_name}-public-rt-tf" }
 }
 
 # 5. Associate the route table with our subnet (this is what makes it "public")
@@ -54,7 +54,7 @@ resource "aws_route_table_association" "public" {
 # =============================================================
 
 resource "aws_security_group" "web" {
-  name        = "firstapp-sg-tf"
+  name        = "${var.project_name}-sg-tf"
   description = "Web app firewall - SSH, HTTP, HTTPS"
   vpc_id      = aws_vpc.main.id   # 🔗 must live inside our VPC
 
@@ -64,7 +64,7 @@ resource "aws_security_group" "web" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["13.239.158.0/29"]   # AWS Instance Connect range (Sydney) - tighten later
+    cidr_blocks = data.aws_ip_ranges.instance_connect.cidr_blocks   # auto fetched
   }
 
   # --- INBOUND rule 2: HTTP (port 80) ---
@@ -94,16 +94,16 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "firstapp-sg-tf" }
+  tags = { Name = "${var.project_name}-sg-tf" }
 }
 # =============================================================
 #  STORAGE — the S3 bucket for uploads
 # =============================================================
 
 resource "aws_s3_bucket" "uploads" {
-  bucket = "firstapp-uploads-jthai-tf"   # must be globally unique
+  bucket = var.bucket_name   # must be globally unique
 
-  tags = { Name = "firstapp-uploads-tf" }
+  tags = { Name = "${var.project_name}-uploads-tf" }
 }
 
 # Keep the bucket private — block all public access (secure default)
@@ -122,7 +122,7 @@ resource "aws_s3_bucket_public_access_block" "uploads" {
 
 # 1. The role + its trust policy (WHO can assume it)
 resource "aws_iam_role" "ec2_role" {
-  name = "firstapp-ec2-role-tf"
+  name = "${var.project_name}-ec2-role-tf"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -133,12 +133,12 @@ resource "aws_iam_role" "ec2_role" {
     }]
   })
 
-  tags = { Name = "firstapp-ec2-role-tf" }
+  tags = { Name = "${var.project_name}-ec2-role-tf" }
 }
 
 # 2. The permissions policy (WHAT the role can do) - scoped to our bucket only
 resource "aws_iam_role_policy" "s3_access" {
-  name = "firstapp-s3-access"
+  name = "${var.project_name}-s3-access"
   role = aws_iam_role.ec2_role.id
 
   policy = jsonencode({
@@ -160,7 +160,7 @@ resource "aws_iam_role_policy" "s3_access" {
 
 # 3. The instance profile — the "wrapper" that lets EC2 actually use the role
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "firstapp-ec2-profile-tf"
+  name = "${var.project_name}-ec2-profile-tf"
   role = aws_iam_role.ec2_role.name
 }
 # =============================================================
@@ -194,11 +194,24 @@ resource "aws_instance" "web" {
   user_data = <<-EOF
     #!/bin/bash
     apt update -y
-    apt install -y nginx
+    apt install -y nginx unzip
+
+    # --- Install the AWS CLI v2 (official method) ---
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    ./aws/install
+    rm -rf awscliv2.zip aws
+
+    # --- Web server setup ---
     echo "App server ready - deployed by Terraform" > /var/www/html/index.html
     systemctl enable nginx
     systemctl start nginx
   EOF
 
-  tags = { Name = "firstapp-server-tf" }
+  tags = { Name = "${var.project_name}-server-tf" }
+}
+# Look up AWS's current EC2 Instance Connect range for our region
+data "aws_ip_ranges" "instance_connect" {
+  regions  = ["ap-southeast-2"]
+  services = ["ec2_instance_connect"]
 }
