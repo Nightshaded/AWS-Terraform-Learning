@@ -1,18 +1,27 @@
 provider "aws" {
-  region = "ap-southeast-2"
+  region = var.aws_region
 }
+
+# =============================================================
+#  SNS - the alert channel
+# =============================================================
 resource "aws_sns_topic" "alerts" {
-  name = "uptime-alerts-n8n"
+  name = "${var.project_name}-alerts"
 }
 
 resource "aws_sns_topic_subscription" "email" {
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "email"
-  endpoint  = "jordanthai1910@gmail.com"   # ← put your real email here
+  endpoint  = var.alert_email
 }
+
+# =============================================================
+#  IAM - the role the Lambda runs with
+# =============================================================
+
 # The role the Lambda "becomes" when it runs
 resource "aws_iam_role" "lambda_role" {
-  name = "uptime-checker-role-tf"
+  name = "${var.project_name}-role-tf"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -44,7 +53,12 @@ resource "aws_iam_role_policy" "sns_publish" {
     }]
   })
 }
-# Zip the handler automatically — no manual zipping
+
+# =============================================================
+#  LAMBDA - the check logic
+# =============================================================
+
+# Zip the handler automatically - no manual zipping
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_file = "${path.module}/lambda/handler.py"
@@ -52,25 +66,29 @@ data "archive_file" "lambda_zip" {
 }
 
 resource "aws_lambda_function" "uptime_checker" {
-  function_name    = "website-uptime-checker-tf"
+  function_name    = "${var.project_name}-tf"
   role             = aws_iam_role.lambda_role.arn
   handler          = "handler.lambda_handler"
   runtime          = "python3.12"
-  timeout          = 30
+  timeout          = var.lambda_timeout
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
   environment {
     variables = {
       SNS_TOPIC_ARN   = aws_sns_topic.alerts.arn
-      SITES           = "https://n8n.jordanthai.com"
-      TIMEOUT_SECONDS = "10"
+      SITES           = var.sites_to_check
+      TIMEOUT_SECONDS = var.timeout_seconds
     }
   }
 }
+
+# =============================================================
+#  EVENTBRIDGE - the schedule (the "cron")
+# =============================================================
 resource "aws_cloudwatch_event_rule" "schedule" {
-  name                = "uptime-every-5-min-tf"
-  schedule_expression = "rate(5 minutes)"
+  name                = "${var.project_name}-schedule-tf"
+  schedule_expression = var.schedule_expression
 }
 
 resource "aws_cloudwatch_event_target" "lambda_target" {
