@@ -215,3 +215,60 @@ data "aws_ip_ranges" "instance_connect" {
   regions  = ["ap-southeast-2"]
   services = ["ec2_instance_connect"]
 }
+
+# =============================================================
+#  PRIVATE SUBNETS - for the database tier (no internet access)
+# =============================================================
+
+resource "aws_subnet" "private_a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "ap-southeast-2a"
+
+  # NOTE: no map_public_ip_on_launch - this subnet stays private
+  tags = { Name = "${var.project_name}-private-a-tf" }
+}
+
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.3.0/24"
+  availability_zone = "ap-southeast-2b"
+
+  tags = { Name = "${var.project_name}-private-b-tf" }
+}
+
+# The DB subnet group - RDS requires subnets across 2+ AZs
+resource "aws_db_subnet_group" "main" {
+  name       = "${var.project_name}-db-subnet-group"
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+
+  tags = { Name = "${var.project_name}-db-subnet-group-tf" }
+}
+
+# =============================================================
+#  DATABASE SECURITY GROUP - only the web tier may connect
+# =============================================================
+
+resource "aws_security_group" "db" {
+  name        = "${var.project_name}-db-sg-tf"
+  description = "Allow MySQL from the web tier only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "MySQL from web servers only"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web.id]   # 🌟 SG reference, not an IP!
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project_name}-db-sg-tf" }
+}
