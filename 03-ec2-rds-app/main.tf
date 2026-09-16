@@ -272,3 +272,69 @@ resource "aws_security_group" "db" {
 
   tags = { Name = "${var.project_name}-db-sg-tf" }
 }
+
+# =============================================================
+#  DATABASE PASSWORD - generated, never hardcoded
+# =============================================================
+
+resource "random_password" "db" {
+  length  = 20
+  special = true
+  # RDS disallows these characters in passwords
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+# Store it in Secrets Manager so you can retrieve it later
+resource "aws_secretsmanager_secret" "db" {
+  name = "${var.project_name}-db-password-tf"
+
+  # Lets you destroy/recreate freely while learning
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "db" {
+  secret_id = aws_secretsmanager_secret.db.id
+  secret_string = jsonencode({
+    username = var.db_username
+    password = random_password.db.result
+    host     = aws_db_instance.main.address
+    dbname   = var.db_name
+  })
+}
+# =============================================================
+#  RDS - the managed MySQL database
+# =============================================================
+
+resource "aws_db_instance" "main" {
+  identifier = "${var.project_name}-db-tf"
+
+  # --- Engine ---
+  engine         = "mysql"
+  engine_version = "8.0"
+  instance_class = var.db_instance_class    # db.t3.micro = free tier
+
+  # --- Storage ---
+  allocated_storage     = 20                # 20 GB (free tier limit)
+  max_allocated_storage = 0                 # disable autoscaling (cost control)
+  storage_type          = "gp2"
+  storage_encrypted     = true              # encryption at rest 🔒
+
+  # --- Credentials ---
+  db_name  = var.db_name
+  username = var.db_username
+  password = random_password.db.result      # 🔑 from the generated secret
+
+  # --- Networking (the important bit) ---
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  publicly_accessible    = false            # 🌟 NEVER expose a database
+  multi_az               = false            # single AZ (cost control)
+
+  # --- Backups & lifecycle ---
+  backup_retention_period = 0               # no backups (learning only)
+  skip_final_snapshot     = true            # lets you destroy cleanly
+  deletion_protection     = false           # lets you destroy cleanly
+  apply_immediately       = true
+
+  tags = { Name = "${var.project_name}-db-tf" }
+}

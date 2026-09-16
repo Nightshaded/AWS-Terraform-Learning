@@ -43,3 +43,21 @@ variable "instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+variable "db_name" {
+  description = "Name of the initial database"
+  type        = string
+  default     = "appdb"
+}
+
+variable "db_username" {
+  description = "Master username for the database"
+  type        = string
+  default     = "admin"
+}
+
+variable "db_instance_class" {
+  description = "RDS instance size (db.t3.micro is free-tier eligible)"
+  type        = string
+  default     = "db.t3.micro"
+}
