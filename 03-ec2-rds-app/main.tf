@@ -310,7 +310,8 @@ resource "aws_db_instance" "main" {
 
   # --- Engine ---
   engine         = "mysql"
-  engine_version = "8.0"
+  engine_version = "8.4"
+  engine_lifecycle_support = "open-source-rds-extended-support-disabled"
   instance_class = var.db_instance_class    # db.t3.micro = free tier
 
   # --- Storage ---
