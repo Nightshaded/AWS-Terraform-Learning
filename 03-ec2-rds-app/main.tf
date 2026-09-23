@@ -338,3 +338,17 @@ resource "aws_db_instance" "main" {
 
   tags = { Name = "${var.project_name}-db-tf" }
 }
+# Allow the EC2 role to read the database credentials
+resource "aws_iam_role_policy" "secrets_access" {
+  name = "${var.project_name}-secrets-access"
+  role = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = aws_secretsmanager_secret.db.arn   # 🔒 this ONE secret only
+    }]
+  })
+}
