@@ -14,3 +14,8 @@ variable "notification_email" {
   description = "Email address that receives access review requests"
   type        = string
 }
+variable "review_timeout_seconds" {
+  description = "How long to wait for an owner's decision before marking NO_RESPONSE"
+  type        = number
+  default     = 604800 # 7 days
+}
