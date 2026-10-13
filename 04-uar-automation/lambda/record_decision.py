@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from urllib.parse import parse_qs
 
-import boto3
+import boto3 # type: ignore
 
 sfn = boto3.client("stepfunctions")
 table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])

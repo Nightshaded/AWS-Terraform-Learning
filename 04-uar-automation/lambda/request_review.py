@@ -1,7 +1,7 @@
 import os
 from urllib.parse import urlencode
 
-import boto3
+import boto3 # type: ignore
 
 sns = boto3.client("sns")
 table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
