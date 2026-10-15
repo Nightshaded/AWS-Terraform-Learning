@@ -19,3 +19,20 @@ variable "review_timeout_seconds" {
   type        = number
   default     = 604800 # 7 days
 }
+variable "schedule_expression" {
+  description = "When the review runs (EventBridge Scheduler syntax)"
+  type        = string
+  default     = "cron(0 9 1 1,4,7,10 ? *)" # 9am on the 1st of Jan, Apr, Jul, Oct
+}
+
+variable "schedule_timezone" {
+  description = "Timezone the schedule runs in"
+  type        = string
+  default     = "Australia/Melbourne"
+}
+
+variable "revoke_tag_key" {
+  description = "Only users with this tag set to 'true' can have access removed automatically"
+  type        = string
+  default     = "uar-auto-revoke"
+}

@@ -22,6 +22,8 @@ data "aws_iam_policy_document" "state_machine" {
       "${aws_lambda_function.collect_users.arn}:*",
       aws_lambda_function.request_review.arn,
       "${aws_lambda_function.request_review.arn}:*",
+      aws_lambda_function.revoke_access.arn,
+      "${aws_lambda_function.revoke_access.arn}:*",
     ]
   }
   statement {
@@ -91,11 +93,45 @@ resource "aws_sfn_state_machine" "uar" {
                   "task_token.$" = "$$.Task.Token"
                 }
               }
+              ResultPath = "$.result"
               Catch = [{
                 ErrorEquals = ["States.Timeout"]
                 ResultPath  = "$.error"
                 Next        = "MarkNoResponse"
               }]
+              Next = "CheckDecision"
+            }
+
+            CheckDecision = {
+              Type = "Choice"
+              Choices = [{
+                Variable     = "$.result.decision"
+                StringEquals = "REVOKED"
+                Next         = "RevokeAccess"
+              }]
+              Default = "ReviewDone"
+            }
+
+            RevokeAccess = {
+              Type     = "Task"
+              Resource = "arn:aws:states:::lambda:invoke"
+              Parameters = {
+                FunctionName = aws_lambda_function.revoke_access.arn
+                Payload = {
+                  "user_name.$" = "$.user_name"
+                  "review_id.$" = "$.review_id"
+                }
+              }
+              ResultPath = null
+              Next       = "ReviewDone"
+            }
+
+            ReviewDone = {
+              Type = "Pass"
+              Parameters = {
+                "user_name.$" = "$.user_name"
+                "decision.$"  = "$.result.decision"
+              }
               End = true
             }
 
